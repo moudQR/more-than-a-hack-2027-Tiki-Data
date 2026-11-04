@@ -19,6 +19,7 @@ import os
 import sys
 
 import numpy as np
+import pandas as pd
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -65,9 +66,69 @@ VERSIONS = {
 
 
 def evaluate(gt, labels):
+    """The numbers the comparison looks at, for one match and one version."""
     result = pm.evaluate(gt, pm.label_codes(labels))
-    return (result["spell_f1_mean"], result["macro_f1"], result["n_pred_spells"],
-            result["n_gt_spells"])
+    return {"spellF1": result["spell_f1_mean"], "macroF1": result["macro_f1"],
+            "poss": result["n_pred_spells"], "true_poss": result["n_gt_spells"],
+            "alive_dead_f1": result["alive_dead_f1"],
+            "team_acc": result["team_acc_both_alive"]}
+
+
+def matches(seeds=SEEDS, clean=False):
+    """Yield (match_id, seed, damaged data, blocks, gt) for every run of the test bed."""
+    profile = None if clean else degrade.load_profile()
+    for match_id in external.match_ids():
+        data = external.load(match_id)
+        gt = pm.label_codes(data["labels"])
+        blocks = [tuple(block) for block in data["blocks"].tolist()]
+        for seed in ((0,) if clean else seeds):
+            damaged = data if clean else degrade.degrade(data, profile, seed)
+            yield match_id, seed, damaged, blocks, gt
+
+
+def score_versions(versions=None, seeds=SEEDS, clean=False):
+    """One row per version, match and seed."""
+    versions = VERSIONS if versions is None else versions
+    rows = []
+    for match_id, seed, damaged, blocks, gt in matches(seeds, clean):
+        for name, version in versions.items():
+            row = evaluate(gt, version(damaged, blocks, match_id))
+            row.update(version=name, match=match_id, seed=seed)
+            rows.append(row)
+    return pd.DataFrame(rows)
+
+
+def what_if(version, seeds=SEEDS):
+    """What a version would score with perfect dead-ball calls, or with perfect team calls.
+
+    Only possible here, where every frame has a label. The larger of the two gains shows which
+    half of the problem is costing more.
+    """
+    rows = []
+    for match_id, seed, damaged, blocks, gt in matches(seeds):
+        labels = version(damaged, blocks, match_id)
+        truth = np.array(pm.LABELS, dtype="<U1")[gt]
+
+        perfect_dead = states.apply_dead_ball(np.where(labels == "X", "D", labels), truth == "D",
+                                              blocks)
+        perfect_team = labels.copy()
+        both_alive = np.isin(labels, ("H", "A")) & np.isin(truth, ("H", "A"))
+        perfect_team[both_alive] = truth[both_alive]
+
+        rows.append({"match": match_id, "seed": seed,
+                     "as_it_is": evaluate(gt, labels)["spellF1"],
+                     "perfect_dead_ball": evaluate(gt, perfect_dead)["spellF1"],
+                     "perfect_team": evaluate(gt, perfect_team)["spellF1"]})
+    return pd.DataFrame(rows)
+
+
+def summary(table):
+    """One row per version, best first."""
+    grouped = table.groupby("version")
+    out = grouped[["spellF1", "macroF1", "poss", "true_poss", "alive_dead_f1", "team_acc"]].mean()
+    out["worst_match"] = grouped["spellF1"].min()
+    out["best_match"] = grouped["spellF1"].max()
+    return out.sort_values("spellF1", ascending=False)
 
 
 if __name__ == '__main__':
@@ -75,22 +136,5 @@ if __name__ == '__main__':
     parser.add_argument("--clean", action="store_true", help="skip the damage")
     args = parser.parse_args()
 
-    profile = None if args.clean else degrade.load_profile()
-    scores = {name: [] for name in VERSIONS}
-    for match_id in external.match_ids():
-        data = external.load(match_id)
-        gt = pm.label_codes(data["labels"])
-        blocks = [tuple(block) for block in data["blocks"].tolist()]
-        for seed in ((0,) if args.clean else SEEDS):
-            damaged = data if args.clean else degrade.degrade(data, profile, seed)
-            for name, version in VERSIONS.items():
-                scores[name].append(evaluate(gt, version(damaged, blocks, match_id)))
-
-    print("{:<20} {:>8} {:>8} {:>6} {:>6}  spellF1 by match range".format(
-        "version", "spellF1", "macroF1", "poss", "true"))
-    for name, rows in sorted(scores.items(), key=lambda item: -np.mean(item[1], axis=0)[0]):
-        rows = np.array(rows)
-        print("{:<20} {:>8.4f} {:>8.4f} {:>6.0f} {:>6.0f}  {:.3f} .. {:.3f}".format(
-            name, rows[:, 0].mean(), rows[:, 1].mean(), rows[:, 2].mean(), rows[:, 3].mean(),
-            rows[:, 0].min(), rows[:, 0].max()))
+    print(summary(score_versions(clean=args.clean)).round(4).to_string())
     print("\nGaps below about 0.04 are noise on one match; these are means over many runs.")

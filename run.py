@@ -29,10 +29,9 @@ CHANGE_COST = 10        # what the best path pays for each H, A or D change, cho
 DEFAULT_NAME = "tiki_data"
 
 
-def predict(data, blocks, booster):
+def predict(data, blocks, booster, cost=CHANGE_COST):
     """Labels for every frame. blocks is [(half, first_frame, last_frame)]."""
-    labels = states.decode(model.scores(booster, data, blocks), blocks,
-                           CHANGE_COST, CHANGE_COST, CHANGE_COST)
+    labels = states.decode(model.scores(booster, data, blocks), blocks, cost, cost, cost)
     return states.abstain_outside(labels, blocks)
 
 
