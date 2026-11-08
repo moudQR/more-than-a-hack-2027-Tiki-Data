@@ -9,6 +9,7 @@ from scipy.ndimage import uniform_filter1d
 
 import ball
 import dead_ball
+import touches
 
 # Params
 PITCH_LENGTH = 105.0
@@ -96,6 +97,11 @@ def build(data, blocks):
             for half_width in ROLL_WINDOWS:
                 cols["{}_{}_r{}".format(side, name, half_width)] = rolling_mean(values[side],
                                                                                 half_width)
+
+    frames, teams = touches.detect(ball_xy, near["h"], near["a"], blocks)
+    cols.update(touches.clues(frames, teams, len(ball_xy)))
+    cols["ball_turn"] = touches.velocity_change(ball_xy)
+    cols["ball_turn_r25"] = rolling_mean(cols["ball_turn"], 25)
 
     closer_home = np.where(np.isnan(near["h"]) | np.isnan(near["a"]), np.nan,
                            (near["h"] < near["a"]).astype(np.float32))

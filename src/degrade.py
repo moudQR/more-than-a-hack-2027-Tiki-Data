@@ -2,10 +2,12 @@
 
 The open matches come from a much cleaner system, so a score on them as they are says little. This
 removes the ball and the players the way the real ATD loses them, using the lengths of the seen and
-unseen stretches measured on the provided match, then adds position noise.
+unseen stretches measured on the provided match, softens the ball path as much as the real
+one, then adds a little position noise.
 
-Only those lengths are taken from the provided match: no labels and no frame numbers. They stay in
-cache/, because they are derived from the match data.
+Only those lengths and the size of its velocity changes are taken from the provided match: no
+labels and no frame numbers. The lengths stay in cache/, because they are derived from the match
+data.
 
 MAX_ALIVE_GAP and MAX_DEAD_SEEN were set so the four baselines land near their published full-match
 scores with the ball visible about as often as DATA.md says, so no ground truth was involved.
@@ -18,6 +20,7 @@ import os
 import sys
 
 import numpy as np
+from scipy.ndimage import uniform_filter1d
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -26,7 +29,8 @@ from games import GAME, half_video_blocks  # noqa: E402
 
 # Params
 PROFILE_PATH = os.path.join(ROOT, "cache", "tracking_profile.npz")
-BALL_NOISE_M = 0.5
+BALL_NOISE_M = 0.05             # the real ball path is smooth, not noisy
+BALL_SMOOTH_FRAMES = 15         # matches the size of velocity changes in the real ATD
 PLAYER_NOISE_M = 0.3
 PLAYER_COVERAGE = 20.5 / 22     # DATA.md: 20.5 tracked objects on average, of 22 players
 MAX_ALIVE_GAP = 200             # longest ball gap in play, frames
@@ -119,6 +123,15 @@ def ball_mask(labels, profile, rng, max_alive_gap=None, max_dead_seen=None):
     return np.where(blurred_dead_zone(labels, rng), dead, alive)
 
 
+def smooth_ball(ball_xy, blocks):
+    """The ball path with sharp changes softened, half by half."""
+    out = ball_xy.copy()
+    for _, first, last in blocks:
+        out[first:last + 1] = uniform_filter1d(ball_xy[first:last + 1], BALL_SMOOTH_FRAMES, axis=0,
+                                               mode="nearest")
+    return out
+
+
 def player_gap_lengths(profile, rng):
     """Short gaps that leave PLAYER_COVERAGE of each player tracked.
 
@@ -135,7 +148,8 @@ def degrade(data, profile, seed, **ball_options):
     n_frames, n_slots = data["player_xy"].shape[:2]
     out = dict(data)
 
-    ball_xy = data["ball_xy"] + rng.normal(0, BALL_NOISE_M, data["ball_xy"].shape)
+    ball_xy = smooth_ball(data["ball_xy"], data["blocks"])
+    ball_xy = ball_xy + rng.normal(0, BALL_NOISE_M, ball_xy.shape)
     ball_mask_ = ball_mask(data["labels"], profile, rng, **ball_options)
     ball_xy[~ball_mask_] = np.nan
     ball_speed = data["ball_speed"].copy()
