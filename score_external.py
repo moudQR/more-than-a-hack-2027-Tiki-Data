@@ -122,6 +122,46 @@ def what_if(version, seeds=SEEDS):
     return pd.DataFrame(rows)
 
 
+def scorecard(versions=None, seeds=SEEDS):
+    """Every number the official scoreboard reports, per version, pooled over the test bed.
+
+    Returns (card, confusion): card is a DataFrame with one row per version; confusion maps each
+    version to its 4x4 frame counts, rows the truth and columns the prediction, in H A D X order.
+    Per-class figures are recomputed from the pooled counts rather than averaged.
+    """
+    versions = VERSIONS if versions is None else versions
+    pooled = {name: np.zeros((pm.N_LABELS, pm.N_LABELS), dtype=np.int64) for name in versions}
+    rows = {name: [] for name in versions}
+    for match_id, seed, damaged, blocks, gt in matches(seeds):
+        for name, version in versions.items():
+            result = pm.evaluate(gt, pm.label_codes(version(damaged, blocks, match_id)))
+            pooled[name] += np.array(result["confusion"])
+            loose, tight = result["transitions"][pm.TAUS[-1]], result["transitions"][pm.TAUS[0]]
+            row = {"spellF1": result["spell_f1_mean"], "macroF1": result["macro_f1"],
+                   "kappa": result["kappa"], "accuracy": result["accuracy"],
+                   "alive_dead_f1": result["alive_dead_f1"],
+                   "team_acc": result["team_acc_both_alive"],
+                   "trans_f1_0.5s": tight["f1"], "trans_f1_1s": loose["f1"],
+                   "mean_latency_frames": loose["mean_latency"],
+                   "poss": result["n_pred_spells"], "true_poss": result["n_gt_spells"],
+                   "mean_poss_s": result["mean_spell_duration_s"],
+                   "true_mean_poss_s": result["gt_mean_spell_duration_s"],
+                   "fragmentation": result["fragmentation"], "home_share_err": result["share_err"]}
+            for iou in pm.SPELL_IOUS:
+                row["spellF1@{:.1f}".format(iou)] = result["spell_f1"][iou]["f1"]
+            rows[name].append(row)
+
+    card = pd.DataFrame({name: pd.DataFrame(values).mean() for name, values in rows.items()}).T
+    for name, counts in pooled.items():
+        scored = pm.scored_confusion(counts)
+        for k, label in enumerate(pm.SCORED):
+            precision, recall, f1 = pm.per_class_prf(scored, k)
+            card.loc[name, "precision_" + label] = precision
+            card.loc[name, "recall_" + label] = recall
+            card.loc[name, "f1_" + label] = f1
+    return card.sort_values("spellF1", ascending=False), pooled
+
+
 def summary(table):
     """One row per version, best first."""
     grouped = table.groupby("version")
@@ -134,7 +174,16 @@ def summary(table):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--clean", action="store_true", help="skip the damage")
+    parser.add_argument("--detail", action="store_true",
+                        help="every scoreboard number and the confusion matrices")
     args = parser.parse_args()
 
-    print(summary(score_versions(clean=args.clean)).round(4).to_string())
+    if args.detail:
+        card, confusion = scorecard()
+        print(card.round(4).T.to_string())
+        for name, counts in confusion.items():
+            print("\n{}  rows = truth, columns = prediction".format(name))
+            print(pd.DataFrame(counts, index=pm.LABELS, columns=pm.LABELS).iloc[:3].to_string())
+    else:
+        print(summary(score_versions(clean=args.clean)).round(4).to_string())
     print("\nGaps below about 0.04 are noise on one match; these are means over many runs.")

@@ -13,8 +13,9 @@ committed:
 Row layout: first half, one separator row, second half. The separator is NaN in the arrays and X
 in the labels, which is what keeps the scorer from joining the two halves.
 
-The labels follow the challenge: D where BallStatus is 0, otherwise the team in BallPossession.
-Their definition of possession is not the challenge's, so a score here is a guide, not a forecast.
+The labels follow the challenge: D where BallStatus is 0, otherwise the team in BallPossession,
+with possessions under 2 s folded away as touches (challenge_labels). DFL's definition of possession
+is still not the challenge's, so a score here is a guide, not a forecast.
 """
 
 import glob
@@ -38,6 +39,7 @@ HALF_LENGTH, HALF_WIDTH = 52.5, 34.0  # DFL coordinates are centred, the ATD's s
 KMH_TO_MS = 1 / 3.6  # DFL speeds are km/h, the ATD's are m/s
 HOME_POSSESSION, DEAD_STATUS = 1, 0
 SECTIONS = ("firstHalf", "secondHalf")
+MIN_POSSESSION_FRAMES = 50  # possessions under 2 s are treated as touches, see challenge_labels
 
 MATCH_ID = re.compile(r"DFL-MAT-(\w+)\.xml$")
 FRAMESET = re.compile(r'GameSection="(\w+)".*TeamId="([^"]+)" PersonId="([^"]+)"')
@@ -136,13 +138,46 @@ def convert(match_id):
     return path
 
 
+def challenge_labels(labels, blocks, min_frames=MIN_POSSESSION_FRAMES):
+    """The DFL labels with very short possessions folded away, closer to the challenge's meaning.
+
+    DFL gives the ball to whoever touches it, so about 30% of its possessions last under 2 s. The
+    challenge counts only controlled possession: a touch, a deflection or a lost aerial duel does
+    not change it, and a loose ball stays with the last team. So a shorter possession goes to the
+    last team that had the ball in that half, or to the next one straight after a restart.
+    """
+    out = labels.copy()
+    for _, first, last in blocks:
+        window = out[first:last + 1]
+        breaks = np.flatnonzero(window[1:] != window[:-1]) + 1
+        bounds = np.concatenate(([0], breaks, [len(window)]))
+        spells = list(zip(bounds[:-1], bounds[1:]))
+        for index, (start, stop) in enumerate(spells):
+            if window[start] not in ("H", "A") or stop - start >= min_frames:
+                continue
+            before = window[start - 1] if start > 0 else "D"
+            after = window[spells[index + 1][0]] if index + 1 < len(spells) else "D"
+            if before in ("H", "A"):
+                window[start:stop] = before
+            elif after in ("H", "A"):
+                window[start:stop] = after
+    return out
+
+
 def load(match_id):
-    """One match as a dict, converting it the first time. blocks are (half, first, last) rows."""
+    """One match as a dict, converting it the first time. blocks are (half, first, last) rows.
+
+    labels are the challenge-style ones, and labels_dfl the originals.
+    """
     path = os.path.join(CACHE_DIR, match_id + ".npz")
     if not os.path.isfile(path):
         convert(match_id)
     with np.load(path) as cached:
-        return {name: cached[name] for name in cached.files}
+        data = {name: cached[name] for name in cached.files}
+    blocks = [tuple(block) for block in data["blocks"].tolist()]
+    data["labels_dfl"] = data["labels"]
+    data["labels"] = challenge_labels(data["labels"], blocks)
+    return data
 
 
 if __name__ == '__main__':
