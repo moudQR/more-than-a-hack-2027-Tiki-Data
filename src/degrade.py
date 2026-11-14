@@ -38,6 +38,13 @@ MAX_DEAD_SEEN = 250             # longest visible ball stretch in dead time, fra
 LONG_GAP_SHARE = 0.1            # longer gaps in play, relative to the short ones
 BOUNDARY_JITTER = 75            # dead-time damage starts and ends up to 3 s off the true edge
 PLAYER_SPEED_NOISE = 0.3        # m/s
+EXTRA_SLOTS = 3                 # spare slots per team for tracks that follow the wrong person
+WRONG_TEAM_GAP_MEAN = 4500      # frames a spare slot rests between wrong-team stretches
+DUPLICATE_GAP_MEAN = 6000       # frames a spare slot rests between duplicate stretches
+FLAW_MEDIAN_FRAMES = 100        # real stretches with a team over 11: median 72-85, mean 137-166
+FLAW_SIGMA = 1.0                # log-normal spread of those lengths
+FLAW_FRAMES = (10, 1500)
+DUPLICATE_OFFSET_M = (1.0, 3.0)
 
 
 def run_lengths(seen):
@@ -124,11 +131,22 @@ def ball_mask(labels, profile, rng, max_alive_gap=None, max_dead_seen=None):
 
 
 def smooth_ball(ball_xy, blocks):
-    """The ball path with sharp changes softened, half by half."""
+    """The ball path with sharp changes softened, half by half. Gaps stay gaps.
+
+    The filter is a running sum, so a single NaN would spread through the rest of the half: gaps
+    are bridged for the filter only and put back afterwards.
+    """
     out = ball_xy.copy()
     for _, first, last in blocks:
-        out[first:last + 1] = uniform_filter1d(ball_xy[first:last + 1], BALL_SMOOTH_FRAMES, axis=0,
-                                               mode="nearest")
+        part = ball_xy[first:last + 1]
+        seen = np.flatnonzero(~np.isnan(part[:, 0]))
+        if not len(seen):
+            continue
+        frames = np.arange(len(part))
+        filled = np.column_stack([np.interp(frames, seen, part[seen, axis]) for axis in (0, 1)])
+        smooth = uniform_filter1d(filled, BALL_SMOOTH_FRAMES, axis=0, mode="nearest")
+        smooth[np.isnan(part[:, 0])] = np.nan
+        out[first:last + 1] = smooth
     return out
 
 
@@ -140,6 +158,59 @@ def player_gap_lengths(profile, rng):
     """
     mean_gap = profile["player_seen"].mean() * (1 - PLAYER_COVERAGE) / PLAYER_COVERAGE
     return 1 + rng.exponential(mean_gap, 10000).astype(np.int64)
+
+
+def flaw_lengths(n, rng):
+    lengths = np.exp(rng.normal(np.log(FLAW_MEDIAN_FRAMES), FLAW_SIGMA, n))
+    return np.clip(lengths, *FLAW_FRAMES).astype(np.int64)
+
+
+def add_track_flaws(player_xy, player_speed, team_of_slot, rng):
+    """Spare slots per team that now and then follow the wrong person.
+
+    Measured on the provided match, a team shows more than 11 tracks on 13% of graded frames and
+    in 84% of those the other team shows 10 or fewer: mostly one player tracked under a slot of
+    the other team, for a few seconds. So most stretches move a player into a spare slot of the
+    other team and blank their own slot meanwhile. A few copy a player into a spare slot of their
+    own team, a little apart, as the duplicates behind the 2% of frames with more than 22 tracks.
+    """
+    n_frames = len(player_xy)
+    teams = [np.flatnonzero(team_of_slot == side) for side in (0, 1)]
+    new_xy = [player_xy]
+    new_speed = [player_speed]
+    new_team = [team_of_slot]
+    for spare_team in (0, 1):
+        for _ in range(EXTRA_SLOTS):
+            xy = np.full((n_frames, 1, 2), np.nan)
+            speed = np.full((n_frames, 1), np.nan, dtype=player_speed.dtype)
+            for wrong_team, gap_mean in ((True, WRONG_TEAM_GAP_MEAN), (False, DUPLICATE_GAP_MEAN)):
+                position = int(rng.exponential(gap_mean))
+                while position < n_frames:
+                    length = int(flaw_lengths(1, rng)[0])
+                    stop = min(n_frames, position + length)
+                    pool = teams[1 - spare_team] if wrong_team else teams[spare_team]
+                    seen = pool[~np.isnan(player_xy[position, pool, 0])]
+                    free = np.isnan(xy[position:stop, 0, 0]).all()
+                    if len(seen) and free:
+                        source = rng.choice(seen)
+                        xy[position:stop, 0] = player_xy[position:stop, source]
+                        speed[position:stop, 0] = player_speed[position:stop, source]
+                        if wrong_team:
+                            player_xy[position:stop, source] = np.nan
+                            player_speed[position:stop, source] = np.nan
+                        else:
+                            angle = rng.uniform(0, 2 * np.pi)
+                            offset = rng.uniform(*DUPLICATE_OFFSET_M)
+                            drift = rng.normal(0, 0.2, (stop - position, 2)).cumsum(axis=0)
+                            drift *= 0.5 / max(1.0, np.abs(drift).max())
+                            xy[position:stop, 0] += offset * np.array([np.cos(angle),
+                                                                       np.sin(angle)]) + drift
+                    position = stop + int(rng.exponential(gap_mean))
+            new_xy.append(xy)
+            new_speed.append(speed)
+            new_team.append(np.array([spare_team], dtype=team_of_slot.dtype))
+    return (np.concatenate(new_xy, axis=1), np.concatenate(new_speed, axis=1),
+            np.concatenate(new_team))
 
 
 def degrade(data, profile, seed, **ball_options):
@@ -164,6 +235,9 @@ def degrade(data, profile, seed, **ball_options):
         player_xy[~mask, slot] = np.nan
         player_speed[~mask, slot] = np.nan
 
+    # own generator, so the rest of the damage stays what it was for this seed
+    player_xy, player_speed, team_of_slot = add_track_flaws(
+        player_xy, player_speed, data["team_of_slot"], np.random.default_rng([seed, 1]))
     out.update(ball_xy=ball_xy, ball_speed=ball_speed, player_xy=player_xy,
-               player_speed=player_speed)
+               player_speed=player_speed, team_of_slot=team_of_slot)
     return out

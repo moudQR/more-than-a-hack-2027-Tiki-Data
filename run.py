@@ -26,12 +26,20 @@ import team  # noqa: E402
 RESULTS_DIR = os.path.join(HERE, "evaluation", "results")
 SMOOTH_WINDOW = 50      # +/- 2 s majority vote, the published floor's window
 CHANGE_COST = 10        # what the best path pays for each H, A or D change, chosen on the test bed
+MIN_POSSESSION = 35     # frames, 1.4 s. Longer minimums won only on our relabelled test answers
+MIN_DEAD = 1            # no minimum stoppage
 DEFAULT_NAME = "tiki_data"
 
 
 def predict(data, blocks, booster, cost=CHANGE_COST):
-    """Labels for every frame. blocks is [(half, first_frame, last_frame)]."""
-    labels = states.decode(model.scores(booster, data, blocks), blocks, cost, cost, cost)
+    """Labels for every frame. blocks is [(half, first_frame, last_frame)].
+
+    The wait before a late kickoff is made certain D before decoding, so the best path pays its
+    normal change cost at the kickoff instead of leaving a fragment.
+    """
+    scores = model.scores(booster, data, blocks)
+    scores[states.kickoff_wait(data["player_speed"], blocks)] = (0.0, 0.0, 1.0)
+    labels = states.decode_min(scores, blocks, cost, cost, cost, MIN_POSSESSION, MIN_DEAD)
     return states.abstain_outside(labels, blocks)
 
 
