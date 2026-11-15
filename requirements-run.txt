@@ -1,0 +1,9 @@
+# Everything run.py, train_model.py and score_external.py need, pinned. Python 3.11.
+# Works on Windows, macOS and Linux. Install with:  pip install -r requirements-run.txt
+#
+# requirements-lock.txt is the full freeze of the Windows environment the work was done in,
+# including the notebook tooling; some of it (pywinpty) installs on Windows only.
+numpy==2.4.6
+pandas==3.1.0
+scipy==1.17.1
+lightgbm==4.7.0

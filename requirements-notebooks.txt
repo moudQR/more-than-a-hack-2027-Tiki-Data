@@ -1,0 +1,9 @@
+# Optional: the notebooks in starter/ and notebooks/, on top of requirements-run.txt.
+#
+# kloppy is pinned to the version the starter tools load the Metrica EPTS export with.
+-r requirements-run.txt
+
+kloppy==3.18.0
+matplotlib
+notebook
+nbstripout

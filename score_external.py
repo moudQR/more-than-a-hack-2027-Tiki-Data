@@ -29,6 +29,7 @@ sys.path.insert(0, os.path.join(HERE, "evaluation"))
 import degrade  # noqa: E402
 import external  # noqa: E402
 import model  # noqa: E402
+import stage2  # noqa: E402
 import possession_metrics as pm  # noqa: E402
 import states  # noqa: E402
 import team  # noqa: E402
@@ -51,7 +52,8 @@ def rules(data, blocks, match_id):
 
 def current(data, blocks, match_id):
     """Scored by the model that never saw this match. See train_model.py --cv."""
-    return predict(data, blocks, model.load(model.cv_path(match_id)))
+    return predict(data, blocks, model.load(model.cv_path(match_id)),
+                   stage2.load(stage2.cv_path(match_id)))
 
 
 # name -> function(data, blocks, match_id) returning labels. Add each new idea here.

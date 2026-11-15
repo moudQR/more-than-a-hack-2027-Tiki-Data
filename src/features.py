@@ -18,6 +18,8 @@ TREND_FRAMES = 25                   # forward speed of a team is measured over 1
 BALL_SPEED_FRAMES = 5
 ROLL_WINDOWS = (12, 25, 50, 125)    # half-widths, +/- 0.5 s to +/- 5 s
 CHUNK_FRAMES = 20000
+PRESS_RADII_M = (2.0, 5.0)          # opponents this close to the team's player nearest the ball
+SHAPE_WINDOWS = (25, 125)           # rolling half-widths for the team-shape clues
 
 
 def rolling_mean(values, half_width):
@@ -75,6 +77,83 @@ def ball_distances(ball_xy, player_xy, is_home):
     return near, close, wide
 
 
+def sorted_rows(values):
+    """(rows sorted ascending with NaN last, count of values per row)."""
+    return np.sort(values, axis=1), (~np.isnan(values)).sum(axis=1)
+
+
+def kth(ordered, count, k, from_top=False):
+    """k-th smallest (or largest) per row of sorted_rows, NaN where fewer than 2k+2 values.
+
+    Quantiles rather than min or max, so a duplicated or wrong-team track barely moves them.
+    """
+    index = count - 1 - k if from_top else np.full(len(count), k)
+    picked = np.take_along_axis(ordered, np.clip(index, 0, ordered.shape[1] - 1)[:, None], 1)[:, 0]
+    return np.where(count >= 2 * k + 2, picked, np.nan)
+
+
+def median(ordered, count):
+    """Row median of sorted_rows, NaN where empty."""
+    last = ordered.shape[1] - 1
+    low = np.take_along_axis(ordered, np.clip((count - 1) // 2, 0, last)[:, None], 1)[:, 0]
+    high = np.take_along_axis(ordered, np.clip(count // 2, 0, last)[:, None], 1)[:, 0]
+    return np.where(count > 0, 0.5 * (low + high), np.nan)
+
+
+def pressure(ball_xy, player_xy, is_home):
+    """Around each team's player nearest the ball: opponents within PRESS_RADII_M, nearest one."""
+    n_frames = len(ball_xy)
+    out = {}
+    for side in "ha":
+        out[side + "_press_near"] = np.full(n_frames, np.nan)
+        for radius in PRESS_RADII_M:
+            out["{}_press{:g}".format(side, radius)] = np.full(n_frames, np.nan)
+    known = ~np.isnan(ball_xy[:, 0])
+    for start in range(0, n_frames, CHUNK_FRAMES):
+        stop = min(n_frames, start + CHUNK_FRAMES)
+        xy = player_xy[start:stop]
+        offsets = xy - ball_xy[start:stop, np.newaxis, :]
+        distances = np.sqrt(np.sum(offsets * offsets, axis=2))
+        rows = np.arange(stop - start)
+        for side, own, other in (("h", is_home, ~is_home), ("a", ~is_home, is_home)):
+            own_d = np.where(np.isnan(distances[:, own]), np.inf, distances[:, own])
+            carrier = xy[:, own][rows, own_d.argmin(axis=1)]
+            gap = xy[:, other] - carrier[:, np.newaxis, :]
+            gap = np.sqrt(np.sum(gap * gap, axis=2))
+            ok = known[start:stop] & np.isfinite(own_d.min(axis=1))
+            filled = np.where(np.isnan(gap), np.inf, gap)
+            best = filled.min(axis=1)
+            out[side + "_press_near"][start:stop] = np.where(ok & np.isfinite(best), best, np.nan)
+            for radius in PRESS_RADII_M:
+                out["{}_press{:g}".format(side, radius)][start:stop] = np.where(
+                    ok, (filled < radius).sum(axis=1), np.nan)
+    return out
+
+
+def shape(player_xy, is_home, direction):
+    """Defensive-line height, length, width, compactness per team, along its attacking direction.
+
+    These need no ball, so they keep working while it is unseen.
+    """
+    centre = PITCH_LENGTH / 2
+    out = {}
+    for side, slots, sign in (("h", is_home, direction), ("a", ~is_home, -direction)):
+        forward = sign[:, np.newaxis] * (player_xy[:, slots, 0] - centre)
+        across = player_xy[:, slots, 1]
+        f_sorted, count = sorted_rows(forward)
+        y_sorted, _ = sorted_rows(across)
+        back = kth(f_sorted, count, 1)
+        out[side + "_line"] = 0.5 * (back + kth(f_sorted, count, 2))   # 2nd/3rd deepest
+        out[side + "_length"] = kth(f_sorted, count, 1, from_top=True) - back
+        out[side + "_width"] = kth(y_sorted, count, 1, from_top=True) - kth(y_sorted, count, 1)
+        reach = np.hypot(forward - median(f_sorted, count)[:, None],
+                         across - median(y_sorted, count)[:, None])
+        out[side + "_compact"] = median(*sorted_rows(reach))
+    out["h_line_gap"] = out["h_line"] - out["a_line"]
+    out["a_line_gap"] = -out["h_line_gap"]
+    return out
+
+
 def build(data, blocks):
     """(names, X): one row per frame, float32, NaN where a clue does not exist."""
     player_xy, player_speed = data["player_xy"], data["player_speed"]
@@ -122,6 +201,15 @@ def build(data, blocks):
         spread_y = player_xy[:, :, 1] - nan_mean(player_xy[:, :, 1], tracked)[:, np.newaxis]
         cols[side + "_spread"] = np.sqrt(nan_mean(spread_x ** 2 + spread_y ** 2, tracked))
         cols[side + "_ball_forward"] = sign * (ball_xy[:, 0] - centre)
+
+    for name, values in pressure(ball_xy, player_xy, is_home).items():
+        cols[name] = values
+        for half_width in ROLL_WINDOWS:
+            cols["{}_r{}".format(name, half_width)] = rolling_mean(values, half_width)
+    for name, values in shape(player_xy, is_home, direction).items():
+        cols[name] = values
+        for half_width in SHAPE_WINDOWS:
+            cols["{}_r{}".format(name, half_width)] = rolling_mean(values, half_width)
 
     ball_step = np.full(len(ball_xy), np.nan)
     ball_step[BALL_SPEED_FRAMES:] = np.linalg.norm(

@@ -19,6 +19,7 @@ import ball  # noqa: E402
 import dead_ball  # noqa: E402
 import model  # noqa: E402
 import parse  # noqa: E402
+import stage2  # noqa: E402
 import states  # noqa: E402
 import team  # noqa: E402
 
@@ -31,13 +32,16 @@ MIN_DEAD = 1            # no minimum stoppage
 DEFAULT_NAME = "tiki_data"
 
 
-def predict(data, blocks, booster, cost=CHANGE_COST):
+def predict(data, blocks, booster, booster2=None, cost=CHANGE_COST):
     """Labels for every frame. blocks is [(half, first_frame, last_frame)].
 
-    The wait before a late kickoff is made certain D before decoding, so the best path pays its
-    normal change cost at the kickoff instead of leaving a fragment.
+    booster2 is the second stage (src/stage2.py), which reads the first model's probabilities in
+    context. The wait before a late kickoff is made certain D before decoding, so the best path
+    pays its normal change cost at the kickoff instead of leaving a fragment.
     """
     scores = model.scores(booster, data, blocks)
+    if booster2 is not None:
+        scores = stage2.scores(booster2, scores, blocks)
     scores[states.kickoff_wait(data["player_speed"], blocks)] = (0.0, 0.0, 1.0)
     labels = states.decode_min(scores, blocks, cost, cost, cost, MIN_POSSESSION, MIN_DEAD)
     return states.abstain_outside(labels, blocks)
@@ -61,5 +65,5 @@ if __name__ == '__main__':
 
     path = write_submission(os.path.join(args.out, args.name + ".csv"),
                             predict(parse.load(rebuild=args.rebuild_cache),
-                                    half_video_blocks(GAME), model.load()))
+                                    half_video_blocks(GAME), model.load(), stage2.load()))
     print("wrote {}".format(os.path.relpath(path, HERE)))

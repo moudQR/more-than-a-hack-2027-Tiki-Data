@@ -7,24 +7,28 @@ More Than a Hack 2027, Phase 1: frame-by-frame possession for FC Barcelona vs At
 
 ## 1. Summary
 
-We label every frame of the tactical video as `H`, `A`, `D` or `X` in three steps:
+We label every frame of the tactical video as `H`, `A`, `D` or `X` in four steps:
 
-1. **Clues.** From the automatic tracking (ATD) alone we compute 73 numbers per frame: who is near
+1. **Clues.** From the automatic tracking (ATD) alone we compute 133 numbers per frame: who is near
    the ball, who touched it last and who touches it next, whether the ball is out, still or unseen,
-   how fast the players move, which way each team pushes.
+   how fast the players move, which way each team pushes, how much pressure the player on the ball
+   is under, and each team's shape (defensive line, length, width, compactness).
 2. **Per-frame model.** A LightGBM classifier turns those clues into a probability of `H`, `A` and
    `D` for each frame. It is trained only on seven open Bundesliga matches whose tracking we
    damaged to look like the provided ATD.
-3. **Best path.** A three-state Viterbi decoder picks, per half, the `H` / `A` / `D` sequence with
-   the highest total log-probability, paying a fixed cost of 10 for every change of state. This
-   turns flickering frame guesses into whole possessions.
+3. **Second stage.** A second LightGBM model reads those probabilities in context (their rolling
+   means, minimums, maximums and slopes over up to ±10 s) and gives corrected probabilities. It is
+   trained on the first model's out-of-fold probabilities only.
+4. **Best path.** A three-state Viterbi decoder picks, per half, the `H` / `A` / `D` sequence with
+   the highest total log-probability, paying a fixed cost of 10 for every change of state, with
+   possessions at least 1.4 s long. This turns flickering frame guesses into whole possessions.
 
 Frames outside the two graded halves are `X`. Inside them every frame gets `H`, `A` or `D`.
 
 | On our test bed (7 held-out matches, 3 damage draws each, official scorer) | spellF1 | macroF1 |
 |---|---|---|
 | Baseline: nearest player, ±50-frame majority vote | 0.243 | 0.598 |
-| **Our pipeline** | **0.634** | **0.890** |
+| **Our pipeline** | **0.669** | **0.898** |
 
 The same baseline scores 0.2433 spellF1 on the real full match (published figure) against 0.2431
 on our test bed, so the test bed places it about right. The test bed is a guide for choosing between versions, not a forecast of our
@@ -67,7 +71,7 @@ time for.
 | Tactical ATD (`BAR-ATH_tactical_atd.txt` + `.xml`) | **Model input** | Parsed once into arrays in metres (`src/parse.py`), cached in `cache/`. Ball and player positions and speeds, team of each track slot (reusing `starter/baseline.py`'s `team_of_each_track`). |
 | `games.py` constants | Used | Pitch size and the graded frame blocks of each half. Frames outside them are `X`. |
 | Tactical ATD, aggregate shape | Used to calibrate the damage | Lengths of seen and unseen stretches of the ball and of player tracks, and the typical size of ball velocity changes, so the open matches can be damaged realistically (section 4). No labels, no frame numbers. |
-| Smart Tagging (`BAR-ATH_tactical_smart_tagging.xml`) | **Check only, not model input** | `src/tags.py` measures how often our team labels agree with the team implied by attacking and defending phase tags. It is automatic data, so this is allowed, and it is our only independent check on the real match: team agreement 0.83 for the final pipeline vs 0.73 for the rule-only version. It was never used to train or tune anything. |
+| Smart Tagging (`BAR-ATH_tactical_smart_tagging.xml`) | **Check only, not model input** | `src/tags.py` measures how often our team labels agree with the team implied by attacking and defending phase tags. It is automatic data, so this is allowed, and it is our only independent check on the real match: team agreement 0.85 for the final pipeline vs 0.73 for the rule-only version. It was never used to train or tune anything. |
 | Tactical video | Not used as input | |
 | Homography (tactical and broadcast) | Dropped | Not needed: the ATD is already in pitch coordinates. |
 | Broadcast video and broadcast ATD | Dropped | Not synchronised with the tactical timeline, has cuts and replays; aligning it was out of scope. |
@@ -124,9 +128,10 @@ No labels and no frame numbers.
 | Model | LightGBM 4.7, `multiclass` (H, A, D), 150 trees, learning rate 0.07, 63 leaves, min 200 rows per leaf, feature fraction 0.7, seed 0, `deterministic=True` |
 | Rows | Every 5th labelled frame of each match, from 2 differently damaged copies (seeds 10 and 11), each frame also included with the two teams swapped |
 | Why swap teams | Every paired clue has an `h_` and `a_` version; swapping them stops the model learning anything about home sides or particular clubs |
-| Features | 73 clues (section 5) |
+| Features | 133 clues (section 5) |
 | Final model | Trained on all 7 matches, saved as `models/possession.txt` |
 | Test-bed models | One per match, trained on the other 6 (`train_model.py --cv`), so every test-bed score comes from a model that never saw that match. Test damage uses seeds 0, 1, 2, different from training. |
+| Second stage (`src/stage2.py`) | LightGBM, 200 trees, learning rate 0.05, 31 leaves, `deterministic=True`. About 250 inputs per frame built only from the first model's H/A/D probabilities: their log-ratios and their rolling mean, minimum, maximum and slope over ±0.5, 1, 2, 5 and 10 s, plus frames since and until the first model last favoured each state. Trained on out-of-fold probabilities (each match scored by the first-stage model that left it out), every 5th frame of seeds 10 and 11, with teams swapped; predictions are averaged with their team-swapped mirror. Saved as `models/stage2.txt`. A fully nested version (no first-stage model ever saw the held-out match) scored within 0.001, so the small leak in the held-out second-stage models does not inflate the test-bed score. |
 
 ### 4.4 How far to trust the test bed
 
@@ -135,15 +140,24 @@ test bed vs 0.2433 published), which suggests the damage is about right for spel
 
 **A second, independent check.** We also scored the final model on Metrica Sports' three public
 sample games (https://github.com/metrica-sports/sample-data), never used for training, with
-answers derived from Metrica's own event data and folded the same way. It scores spellF1 0.774
-clean and 0.658 damaged, against 0.439 and 0.289 for the ±50 baseline, and predicts 249
-possessions against 253 true. This is another tracking provider and an independent possession
+answers derived from Metrica's own event data and folded the same way. It scores spellF1 0.784
+clean and 0.691 damaged, against 0.439 and 0.289 for the ±50 baseline. This is another tracking provider and an independent possession
 definition, so it suggests the model is not tied to the DFL data. Adding these games to training
-did not change the test-bed score, so they are kept as a check only. The converter was a one-off
-script and is not part of the pipeline. But it is
-another league, another tracking system, DFL's possession definition rather than the challenge's,
-and our damage drops the ball at random rather than in crowds and in the air. Gaps below about
-0.04 spellF1 between two versions are within noise.
+did not change the test-bed score, so they are kept as a check only. 
+**A third check.** SkillCorner's open data (https://github.com/SkillCorner/opendata, MIT,
+"SkillCorner open data, in collaboration with PySport") gives 20 A-League matches of broadcast
+tracking with SkillCorner's own automatic per-frame possession; dead ball is taken as the gaps
+between its phases of play. Never used for training. The pipeline scores 0.502 clean and 0.493
+damaged against 0.280 and 0.199 for the baseline, better on all 20 matches. The absolute level is
+lower because broadcast tracking sees only about 9 players per frame and the labels come from
+another automatic model, but the gap to the baseline (about 2.5 times) is the same as on the other
+two sets, which is what we would not see if the model were fitted to the DFL data.
+
+The Metrica and SkillCorner converters were one-off scripts and are not part of the pipeline.
+All test sets differ from the real task in league, tracking system or possession definition, and
+our damage drops the ball at random rather than in crowds and in the air. Gaps below about
+0.04 spellF1 between two versions on one match are within noise, so every change was kept only if it
+won on at least 5 of the 7 matches and did not lower the Metrica score.
 
 ## 5. The pipeline
 
@@ -151,14 +165,15 @@ and our damage drops the ball at random rather than in crowds and in the air. Ga
 data/tactical/*_atd.txt + .xml
   -> src/parse.py      arrays in metres, cached
   -> src/ball.py       drop points > 5 m from the local median, fill gaps up to 1 s with straight lines
-  -> src/features.py   73 clues per frame (uses src/dead_ball.py and src/touches.py)
+  -> src/features.py   133 clues per frame (uses src/dead_ball.py and src/touches.py)
   -> src/model.py      H, A, D probabilities from models/possession.txt
+  -> src/stage2.py     corrected probabilities from models/stage2.txt
   -> src/states.py     late-kickoff wait set to D; Viterbi per half, change cost 10,
                        possessions at least 1.4 s; X outside the halves
   -> evaluation/results/tiki_data.csv
 ```
 
-The 73 clues, in groups:
+The 133 clues, in groups:
 
 | Group | Clues |
 |---|---|
@@ -168,6 +183,8 @@ The 73 clues, in groups:
 | Ball motion | Velocity change, ball speed, distance from the touchline, ball seen now and over ±2 / ±5 s, length of the current gap, ball outside the pitch, ball still for 1 s |
 | Team shape (per team) | Mean position along its attacking direction, how much it advanced in the last second, mean speed, spread, ball position along its attacking direction |
 | Play state | Mean speed of all tracked players (2 s) and over ±5 s; the rule-based dead-ball flag |
+| Pressure (per team) | Around the team's player nearest the ball: opponents within 2 m and 5 m, distance to the nearest opponent; centred means over ±0.5 to ±5 s |
+| Team shape (per team, robust) | Defensive-line height (2nd/3rd deepest player), length, width and compactness, using quantiles and medians so a swapped or duplicated track barely moves them; the gap between the two lines; centred means over ±1 and ±5 s. These need no ball. |
 
 A **touch** is a local peak in the ball's velocity change (after a 5-frame smoothing), in the top
 15% of the match's changes, with a player within 3 m; it is credited to the nearest player's team.
@@ -215,7 +232,7 @@ control. This is where our system draws the lines.
 
 1. Team calls first: on the test bed, perfect team calls would raise spellF1 far more than perfect
    dead-ball calls.
-2. Snap each possession change to the nearest detected touch or stoppage, to tighten the edges.
+2. Tighten possession edges. Snapping changes to detected touches was tried and did not help.
 3. A set-piece detector from the tracking, to sharpen restarts.
 4. Use Smart Tagging phases as soft model input, if a way to measure its effect without labels can
    be found.
@@ -234,7 +251,7 @@ Python 3.11. All commands from the repository root. Nothing needs a GPU.
    ```bash
    python -m venv .venv
    .venv\Scripts\activate          # Windows; on Linux/macOS: source .venv/bin/activate
-   pip install -r requirements-lock.txt
+   pip install -r requirements-run.txt
    ```
 
 3. Run:
@@ -245,7 +262,7 @@ Python 3.11. All commands from the repository root. Nothing needs a GPU.
    ```
 
 `run.py` parses the ATD into `cache/` on first use (`--rebuild-cache` forces it again), applies
-`models/possession.txt` and writes `evaluation/results/tiki_data.csv`. Running it twice gives
+`models/possession.txt` and `models/stage2.txt` and writes `evaluation/results/tiki_data.csv`. Running it twice gives
 byte-identical files; check with `certutil -hashfile evaluation\results\tiki_data.csv SHA256` (Windows)
 or `sha256sum` after each run. Rename the file to `<team_name>.csv` for upload.
 
@@ -263,9 +280,11 @@ or `sha256sum` after each run. Rename the file to `<team_name>.csv` for upload.
 2. Run, in order:
 
    ```bash
-   python train_model.py --cv     # one model per held-out match, in cache/models/
-   python score_external.py       # test-bed table: baselines, rules and current pipeline
-   python train_model.py          # final model on all 7 matches -> models/possession.txt
+   python train_model.py --cv            # first stage per held-out match, in cache/models/
+   python train_model.py --stage2 --cv   # second stage per held-out match
+   python score_external.py              # test-bed table: baselines, rules and current pipeline
+   python train_model.py                 # final first stage on all 7 -> models/possession.txt
+   python train_model.py --stage2        # final second stage -> models/stage2.txt
    python run.py                  # submission -> evaluation/results/tiki_data.csv
    ```
 
@@ -277,8 +296,11 @@ Notes:
 - Converted open matches are cached in `cache/external/` on first use.
 - Seeds are fixed everywhere (damage seeds, LightGBM `seed=0`, `deterministic=True`, row-wise
   histograms, 8 threads). Retraining on the same machine gives a byte-identical
-  `models/possession.txt`; on a different machine, floating-point differences in LightGBM could in
+  `models/possession.txt` and `models/stage2.txt`; on a different machine, floating-point differences in LightGBM could in
   principle change the model, which is why the trained model ships in `models/` and `run.py` uses it.
+- `requirements-run.txt` pins what the pipeline needs and installs on Windows, macOS and Linux.
+  `requirements-notebooks.txt` adds the notebook tooling; `requirements-lock.txt` is the full
+  Windows freeze the work was done in.
 - `python score_external.py --detail` prints the full scorecard (per-class F1, confusion matrices,
   transition latency). Notebooks `04` to `07` in `notebooks/` walk through the pipeline, the
   experiments, the scorecard and a 2D replay; their outputs contain match data and are not
@@ -289,14 +311,15 @@ Notes:
 | File | Role |
 |---|---|
 | `run.py` | Data in, submission out |
-| `train_model.py` | Trains the final or the per-match (`--cv`) models |
+| `train_model.py` | Trains the final or the per-match (`--cv`) models, first or second stage (`--stage2`) |
 | `score_external.py` | Test bed: scores every version on the damaged open matches with the official scorer |
 | `src/parse.py` | ATD text to cached arrays |
 | `src/ball.py` | Ball cleaning |
 | `src/dead_ball.py` | Rule-based dead-ball signal |
 | `src/touches.py` | Touch detection and touch clues |
-| `src/features.py` | The 73 clues; team swap |
-| `src/model.py` | LightGBM training and scoring |
+| `src/features.py` | The 133 clues; team swap |
+| `src/model.py` | First-stage LightGBM training and scoring |
+| `src/stage2.py` | Second-stage model on the first stage's probabilities |
 | `src/states.py` | Viterbi decoder, `X` outside the halves |
 | `src/team.py` | Nearest-team rule (baseline and rule-only version) |
 | `src/external.py` | IDSSE conversion and label folding |
