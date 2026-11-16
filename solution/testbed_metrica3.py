@@ -1,7 +1,7 @@
 """Turn Metrica's public sample game 3 into a stand-in competition bundle, to compare pipelines.
 
-    python victor/testbed_metrica3.py <out_dir>            # clean tracking
-    python victor/testbed_metrica3.py <out_dir> --damage   # tracking made as poor as the real ATD
+    python solution/testbed_metrica3.py <out_dir>            # clean tracking
+    python solution/testbed_metrica3.py <out_dir> --damage   # tracking made as poor as the real ATD
 
 Then run any pipeline with MTAH_DATA_DIR=<out_dir> and score it against <out_dir>/gt.csv with the
 official evaluation/possession_metrics.py.

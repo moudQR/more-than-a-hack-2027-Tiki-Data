@@ -5,9 +5,9 @@ More Than a Hack 2027, Phase 1: frame-by-frame possession for FC Barcelona vs At
 > Upload this file as `<team_name>.md` (or export it as `<team_name>.pdf`), named after the
 > registered team, together with `<team_name>.csv`.
 
-> **Where things are.** This is Victor's folder in the team repository. Paths to the shared files
+> **Where things are.** The pipeline lives in `solution/` in the team repository. Paths to the shared files
 > (`data/`, `starter/`, `evaluation/`, `games.py`) are from the repository root; every other path
-> (`src/`, `models/`, `notebooks/`, `cache/`, `external/`) is inside `victor/`. Commands run from
+> (`src/`, `models/`, `notebooks/`, `cache/`, `external/`) is inside `solution/`. Commands run from
 > the repository root.
 
 ## 1. Summary
@@ -31,7 +31,7 @@ We label every frame of the tactical video as `H`, `A`, `D` or `X` in four steps
 Frames outside the two graded halves are `X`. Inside them every frame gets `H`, `A` or `D`.
 
 **Held-out check of the submitted models** on Metrica Sports' public sample game 3, a match no
-model of ours was trained on, laid out like the competition bundle by `victor/testbed_metrica3.py`
+model of ours was trained on, laid out like the competition bundle by `solution/testbed_metrica3.py`
 and scored with the official `possession_metrics.py`. "Damaged" uses only DATA.md figures (41% of
 the ball missing, about 20.5 of 22 players tracked, position noise):
 
@@ -180,7 +180,7 @@ data/tactical/*_atd.txt + .xml
   -> src/stage2.py     corrected probabilities from models/stage2.txt
   -> src/states.py     late-kickoff wait set to D; Viterbi per half, change cost 10,
                        possessions at least 1.4 s; X outside the halves
-  -> evaluation/results/victor.csv   (repository root)
+  -> evaluation/results/solution.csv   (repository root)
 ```
 
 The 133 clues, in groups:
@@ -261,25 +261,25 @@ Python 3.11. All commands from the repository root. Nothing needs a GPU.
    ```bash
    python -m venv .venv
    .venv\Scripts\activate          # Windows; on Linux/macOS: source .venv/bin/activate
-   pip install -r victor/requirements-run.txt
+   pip install -r solution/requirements-run.txt
    ```
 
 3. Run:
 
    ```bash
-   python victor/run.py
-   python evaluation/validate_submission.py evaluation/results/victor.csv
+   python solution/run.py
+   python evaluation/validate_submission.py evaluation/results/solution.csv
    ```
 
 `run.py` parses the ATD into `cache/` on first use (`--rebuild-cache` forces it again), applies
-`models/possession.txt` and `models/stage2.txt` and writes `evaluation/results/victor.csv`. Running it twice gives
-byte-identical files; check with `certutil -hashfile evaluation\results\victor.csv SHA256` (Windows)
-or `sha256sum` after each run. `python victor/run.py --name <team_name>` writes it under the upload name.
+`models/possession.txt` and `models/stage2.txt` and writes `evaluation/results/solution.csv`. Running it twice gives
+byte-identical files; check with `certutil -hashfile evaluation\results\solution.csv SHA256` (Windows)
+or `sha256sum` after each run. `python solution/run.py --name <team_name>` writes it under the upload name.
 
 ### 8.2 Retrain from scratch
 
 1. Download the 14 IDSSE files from https://huggingface.co/datasets/pysport/idsse-data into
-   `victor/external/idsse/` (about 2.6 GB). For each match id in
+   `solution/external/idsse/` (about 2.6 GB). For each match id in
    `J03WMX, J03WN1, J03WOH, J03WOY, J03WPY, J03WQQ, J03WR9`:
 
    ```
@@ -290,12 +290,12 @@ or `sha256sum` after each run. `python victor/run.py --name <team_name>` writes 
 2. Run, in order:
 
    ```bash
-   python victor/train_model.py --cv            # first stage per held-out match, in cache/models/
-   python victor/train_model.py --stage2 --cv   # second stage per held-out match
-   python victor/score_external.py              # test-bed table: baselines, rules and current pipeline
-   python victor/train_model.py                 # final first stage on all 7 -> models/possession.txt
-   python victor/train_model.py --stage2        # final second stage -> models/stage2.txt
-   python victor/run.py                         # submission -> evaluation/results/victor.csv
+   python solution/train_model.py --cv            # first stage per held-out match, in cache/models/
+   python solution/train_model.py --stage2 --cv   # second stage per held-out match
+   python solution/score_external.py              # test-bed table: baselines, rules and current pipeline
+   python solution/train_model.py                 # final first stage on all 7 -> models/possession.txt
+   python solution/train_model.py --stage2        # final second stage -> models/stage2.txt
+   python solution/run.py                         # submission -> evaluation/results/solution.csv
    ```
 
 Notes:
@@ -309,7 +309,7 @@ Notes:
 - `requirements-run.txt` pins what the pipeline needs and installs on Windows, macOS and Linux.
   `requirements-notebooks.txt` adds the notebook tooling; `requirements-lock.txt` is the full
   Windows freeze the work was done in.
-- `python victor/score_external.py --detail` prints the full scorecard (per-class F1, confusion matrices,
+- `python solution/score_external.py --detail` prints the full scorecard (per-class F1, confusion matrices,
   transition latency). Notebooks `04` to `07` in `notebooks/` walk through the pipeline, the
   experiments, the scorecard and a 2D replay; their outputs contain match data and are not
   published.

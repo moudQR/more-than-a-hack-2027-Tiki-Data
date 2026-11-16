@@ -1,15 +1,14 @@
-# Victor's pipeline (team Tiki-Data)
+# Possession pipeline (team Tiki-Data)
 
-Everything in this folder is Victor's approach, kept separate so the team can compare methods and
-merge the best parts. The shared files stay at the repository root: the match data in `data/`, the
+Everything in this folder is the team's submitted pipeline (originally built by Victor). The shared files stay at the repository root: the match data in `data/`, the
 organisers' `starter/`, `evaluation/` and `games.py`.
 
 From the repository root:
 
 ```bash
-pip install -r victor/requirements-run.txt     # Python 3.11, any OS
-python victor/run.py                           # -> evaluation/results/victor.csv
-python evaluation/validate_submission.py evaluation/results/victor.csv
+pip install -r solution/requirements-run.txt     # Python 3.11, any OS
+python solution/run.py                           # -> evaluation/results/solution.csv
+python evaluation/validate_submission.py evaluation/results/solution.csv
 ```
 
 Unpack the match data into `data/` first, as described in [DATA.md](../DATA.md). How it works, which

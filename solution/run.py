@@ -1,7 +1,7 @@
 """Data in, submission out. This one command regenerates the file.
 
-    python victor/run.py                # writes evaluation/results/victor.csv
-    python victor/run.py --name my_test
+    python solution/run.py                # writes evaluation/results/solution.csv
+    python solution/run.py --name my_test
 """
 
 import argparse
@@ -9,7 +9,7 @@ import os
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-REPO = os.path.dirname(HERE)   # the shared repository; this folder is victor/
+REPO = os.path.dirname(HERE)   # the shared repository; this folder is solution/
 sys.path.insert(0, REPO)
 sys.path.insert(0, os.path.join(REPO, "starter"))
 from baseline import smooth, write_submission  # noqa: E402
@@ -30,7 +30,7 @@ SMOOTH_WINDOW = 50      # +/- 2 s majority vote, the published floor's window
 CHANGE_COST = 10        # what the best path pays for each H, A or D change, chosen on the test bed
 MIN_POSSESSION = 35     # frames, 1.4 s. Longer minimums won only on our relabelled test answers
 MIN_DEAD = 1            # no minimum stoppage
-DEFAULT_NAME = "victor"
+DEFAULT_NAME = "solution"
 
 
 def predict(data, blocks, booster, booster2=None, cost=CHANGE_COST):

@@ -1,9 +1,9 @@
 """Train the model. It only needs the open matches in external/idsse and the tracking cache.
 
-    python victor/train_model.py               # models/possession.txt, on all seven matches
-    python victor/train_model.py --cv          # one model per match, leaving that match out
-    python victor/train_model.py --stage2 --cv # second stage per match, needs the --cv models
-    python victor/train_model.py --stage2      # models/stage2.txt, needs the --cv models
+    python solution/train_model.py               # models/possession.txt, on all seven matches
+    python solution/train_model.py --cv          # one model per match, leaving that match out
+    python solution/train_model.py --stage2 --cv # second stage per match, needs the --cv models
+    python solution/train_model.py --stage2      # models/stage2.txt, needs the --cv models
 
 score_external.py uses the --cv models, so every match is scored by a model that never saw it.
 """
