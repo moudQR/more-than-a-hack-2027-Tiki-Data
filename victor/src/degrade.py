@@ -24,7 +24,7 @@ from scipy.ndimage import uniform_filter1d
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-sys.path.insert(0, ROOT)
+sys.path.insert(0, os.path.dirname(ROOT))   # the shared repository, for games.py
 from games import GAME, half_video_blocks  # noqa: E402
 
 # Params

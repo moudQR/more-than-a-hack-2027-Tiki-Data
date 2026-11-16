@@ -1,7 +1,7 @@
 """Data in, submission out. This one command regenerates the file.
 
-    python run.py                       # writes evaluation/results/tiki_data.csv
-    python run.py --name my_test
+    python victor/run.py                # writes evaluation/results/victor.csv
+    python victor/run.py --name my_test
 """
 
 import argparse
@@ -9,8 +9,9 @@ import os
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, HERE)
-sys.path.insert(0, os.path.join(HERE, "starter"))
+REPO = os.path.dirname(HERE)   # the shared repository; this folder is victor/
+sys.path.insert(0, REPO)
+sys.path.insert(0, os.path.join(REPO, "starter"))
 from baseline import smooth, write_submission  # noqa: E402
 from games import GAME, half_video_blocks  # noqa: E402
 
@@ -24,12 +25,12 @@ import states  # noqa: E402
 import team  # noqa: E402
 
 # Params
-RESULTS_DIR = os.path.join(HERE, "evaluation", "results")
+RESULTS_DIR = os.path.join(REPO, "evaluation", "results")
 SMOOTH_WINDOW = 50      # +/- 2 s majority vote, the published floor's window
 CHANGE_COST = 10        # what the best path pays for each H, A or D change, chosen on the test bed
 MIN_POSSESSION = 35     # frames, 1.4 s. Longer minimums won only on our relabelled test answers
 MIN_DEAD = 1            # no minimum stoppage
-DEFAULT_NAME = "tiki_data"
+DEFAULT_NAME = "victor"
 
 
 def predict(data, blocks, booster, booster2=None, cost=CHANGE_COST):
@@ -66,4 +67,4 @@ if __name__ == '__main__':
     path = write_submission(os.path.join(args.out, args.name + ".csv"),
                             predict(parse.load(rebuild=args.rebuild_cache),
                                     half_video_blocks(GAME), model.load(), stage2.load()))
-    print("wrote {}".format(os.path.relpath(path, HERE)))
+    print("wrote {}".format(os.path.relpath(path, REPO)))

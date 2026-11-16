@@ -1,7 +1,7 @@
 """Compare versions of the pipeline on the open matches. This is how to choose between them.
 
-    python score_external.py                # every version in VERSIONS, damaged tracking
-    python score_external.py --clean        # the same on the undamaged tracking
+    python victor/score_external.py         # every version in VERSIONS, damaged tracking
+    python victor/score_external.py --clean # the same on the undamaged tracking
 
 Scored with the official possession_metrics, so the numbers mean the same as on the board. The
 baseline rows are also the check on the test bed itself: the closer they sit to the published
@@ -22,10 +22,12 @@ import numpy as np
 import pandas as pd
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+REPO = os.path.dirname(HERE)   # the shared repository; this folder is victor/
 sys.path.insert(0, HERE)
 sys.path.insert(0, os.path.join(HERE, "src"))
-sys.path.insert(0, os.path.join(HERE, "starter"))
-sys.path.insert(0, os.path.join(HERE, "evaluation"))
+sys.path.insert(0, os.path.join(REPO, "starter"))
+sys.path.insert(0, os.path.join(REPO, "evaluation"))
+sys.path.insert(0, REPO)
 import degrade  # noqa: E402
 import external  # noqa: E402
 import model  # noqa: E402

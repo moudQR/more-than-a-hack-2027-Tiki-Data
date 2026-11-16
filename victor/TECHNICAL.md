@@ -5,6 +5,11 @@ More Than a Hack 2027, Phase 1: frame-by-frame possession for FC Barcelona vs At
 > Upload this file as `<team_name>.md` (or export it as `<team_name>.pdf`), named after the
 > registered team, together with `<team_name>.csv`.
 
+> **Where things are.** This is Victor's folder in the team repository. Paths to the shared files
+> (`data/`, `starter/`, `evaluation/`, `games.py`) are from the repository root; every other path
+> (`src/`, `models/`, `notebooks/`, `cache/`, `external/`) is inside `victor/`. Commands run from
+> the repository root.
+
 ## 1. Summary
 
 We label every frame of the tactical video as `H`, `A`, `D` or `X` in four steps:
@@ -170,7 +175,7 @@ data/tactical/*_atd.txt + .xml
   -> src/stage2.py     corrected probabilities from models/stage2.txt
   -> src/states.py     late-kickoff wait set to D; Viterbi per half, change cost 10,
                        possessions at least 1.4 s; X outside the halves
-  -> evaluation/results/tiki_data.csv
+  -> evaluation/results/victor.csv   (repository root)
 ```
 
 The 133 clues, in groups:
@@ -251,25 +256,25 @@ Python 3.11. All commands from the repository root. Nothing needs a GPU.
    ```bash
    python -m venv .venv
    .venv\Scripts\activate          # Windows; on Linux/macOS: source .venv/bin/activate
-   pip install -r requirements-run.txt
+   pip install -r victor/requirements-run.txt
    ```
 
 3. Run:
 
    ```bash
-   python run.py
-   python evaluation/validate_submission.py evaluation/results/tiki_data.csv
+   python victor/run.py
+   python evaluation/validate_submission.py evaluation/results/victor.csv
    ```
 
 `run.py` parses the ATD into `cache/` on first use (`--rebuild-cache` forces it again), applies
-`models/possession.txt` and `models/stage2.txt` and writes `evaluation/results/tiki_data.csv`. Running it twice gives
-byte-identical files; check with `certutil -hashfile evaluation\results\tiki_data.csv SHA256` (Windows)
-or `sha256sum` after each run. Rename the file to `<team_name>.csv` for upload.
+`models/possession.txt` and `models/stage2.txt` and writes `evaluation/results/victor.csv`. Running it twice gives
+byte-identical files; check with `certutil -hashfile evaluation\results\victor.csv SHA256` (Windows)
+or `sha256sum` after each run. `python victor/run.py --name <team_name>` writes it under the upload name.
 
 ### 8.2 Retrain from scratch
 
 1. Download the 14 IDSSE files from https://huggingface.co/datasets/pysport/idsse-data into
-   `external/idsse/` (about 2.6 GB). For each match id in
+   `victor/external/idsse/` (about 2.6 GB). For each match id in
    `J03WMX, J03WN1, J03WOH, J03WOY, J03WPY, J03WQQ, J03WR9`:
 
    ```
@@ -280,12 +285,12 @@ or `sha256sum` after each run. Rename the file to `<team_name>.csv` for upload.
 2. Run, in order:
 
    ```bash
-   python train_model.py --cv            # first stage per held-out match, in cache/models/
-   python train_model.py --stage2 --cv   # second stage per held-out match
-   python score_external.py              # test-bed table: baselines, rules and current pipeline
-   python train_model.py                 # final first stage on all 7 -> models/possession.txt
-   python train_model.py --stage2        # final second stage -> models/stage2.txt
-   python run.py                  # submission -> evaluation/results/tiki_data.csv
+   python victor/train_model.py --cv            # first stage per held-out match, in cache/models/
+   python victor/train_model.py --stage2 --cv   # second stage per held-out match
+   python victor/score_external.py              # test-bed table: baselines, rules and current pipeline
+   python victor/train_model.py                 # final first stage on all 7 -> models/possession.txt
+   python victor/train_model.py --stage2        # final second stage -> models/stage2.txt
+   python victor/run.py                         # submission -> evaluation/results/victor.csv
    ```
 
 Notes:
@@ -301,7 +306,7 @@ Notes:
 - `requirements-run.txt` pins what the pipeline needs and installs on Windows, macOS and Linux.
   `requirements-notebooks.txt` adds the notebook tooling; `requirements-lock.txt` is the full
   Windows freeze the work was done in.
-- `python score_external.py --detail` prints the full scorecard (per-class F1, confusion matrices,
+- `python victor/score_external.py --detail` prints the full scorecard (per-class F1, confusion matrices,
   transition latency). Notebooks `04` to `07` in `notebooks/` walk through the pipeline, the
   experiments, the scorecard and a 2D replay; their outputs contain match data and are not
   published.

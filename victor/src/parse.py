@@ -13,8 +13,8 @@ import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-sys.path.insert(0, ROOT)
-sys.path.insert(0, os.path.join(ROOT, "starter"))
+sys.path.insert(0, os.path.dirname(ROOT))   # the shared repository, for games.py
+sys.path.insert(0, os.path.join(os.path.dirname(ROOT), "starter"))
 from baseline import FIELD_SEP, GROUP_SEP, MISSING, team_of_each_track  # noqa: E402
 from games import DEFAULT_SOURCE, GAME, GAMES, require, source_frames  # noqa: E402
 

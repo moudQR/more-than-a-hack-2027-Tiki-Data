@@ -1,9 +1,9 @@
 """Train the model. It only needs the open matches in external/idsse and the tracking cache.
 
-    python train_model.py               # models/possession.txt, on all seven matches
-    python train_model.py --cv          # one model per match, leaving that match out
-    python train_model.py --stage2 --cv # second stage per match, needs the --cv models
-    python train_model.py --stage2      # models/stage2.txt, needs the --cv models
+    python victor/train_model.py               # models/possession.txt, on all seven matches
+    python victor/train_model.py --cv          # one model per match, leaving that match out
+    python victor/train_model.py --stage2 --cv # second stage per match, needs the --cv models
+    python victor/train_model.py --stage2      # models/stage2.txt, needs the --cv models
 
 score_external.py uses the --cv models, so every match is scored by a model that never saw it.
 """
@@ -14,7 +14,7 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "src"))
-sys.path.insert(0, os.path.join(HERE, "starter"))
+sys.path.insert(0, os.path.join(os.path.dirname(HERE), "starter"))
 import external  # noqa: E402
 import model  # noqa: E402
 import stage2  # noqa: E402

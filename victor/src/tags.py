@@ -14,7 +14,7 @@ import sys
 import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.join(os.path.dirname(HERE), "starter"))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(HERE)), "starter"))
 import load_smart_tagging  # noqa: E402
 
 # Params

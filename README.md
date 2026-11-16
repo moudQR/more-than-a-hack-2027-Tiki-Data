@@ -1,16 +1,5 @@
 # More than a Hack 2027 — Phase 1: Ball Possession
 
-> **Our solution: Tiki-Data.** Regenerate the submission from the provided data with:
->
-> ```bash
-> pip install -r requirements-run.txt     # Python 3.11, any OS
-> python run.py                           # -> evaluation/results/tiki_data.csv
-> ```
->
-> Unpack the match data into `data/` first, as described in [DATA.md](DATA.md). How it works,
-> which data it uses, how it was tested and how to retrain it from scratch:
-> **[TECHNICAL.md](TECHNICAL.md)**. Everything below is the organisers' original README.
-
 **Organised by [Metrica Sports](https://metrica-sports.com), [FC Barcelona](https://www.fcbarcelona.com)
 and the [Mobile World Capital Barcelona](https://www.mwcbarcelona.com)**, at the Talent Arena in Barcelona.
 
