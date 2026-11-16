@@ -8,8 +8,8 @@ From the repository root:
 
 ```bash
 pip install -r victor/requirements-run.txt     # Python 3.11, any OS
-python victor/run.py                           # -> evaluation/results/victor.csv
-python evaluation/validate_submission.py evaluation/results/victor.csv
+python victor/run.py                           # -> evaluation/results/Tiki-Data.csv
+python evaluation/validate_submission.py evaluation/results/Tiki-Data.csv
 ```
 
 Unpack the match data into `data/` first, as described in [DATA.md](../DATA.md). How it works, which
