@@ -30,14 +30,20 @@ We label every frame of the tactical video as `H`, `A`, `D` or `X` in four steps
 
 Frames outside the two graded halves are `X`. Inside them every frame gets `H`, `A` or `D`.
 
-| On our test bed (7 held-out matches, 3 damage draws each, official scorer) | spellF1 | macroF1 |
-|---|---|---|
-| Baseline: nearest player, ±50-frame majority vote | 0.243 | 0.598 |
-| **Our pipeline** | **0.669** | **0.898** |
+**Held-out check of the submitted models** on Metrica Sports' public sample game 3, a match no
+model of ours was trained on, laid out like the competition bundle by `victor/testbed_metrica3.py`
+and scored with the official `possession_metrics.py`. "Damaged" uses only DATA.md figures (41% of
+the ball missing, about 20.5 of 22 players tracked, position noise):
 
-The same baseline scores 0.2433 spellF1 on the real full match (published figure) against 0.2431
-on our test bed, so the test bed places it about right. The test bed is a guide for choosing between versions, not a forecast of our
-real score, which we expect to be lower (see section 7).
+| Metrica sample game 3 | spellF1 clean | spellF1 damaged | macroF1 damaged |
+|---|---|---|---|
+| Baseline: nearest player, ±50-frame majority vote | 0.368 | 0.276 | 0.717 |
+| Rule-based alternative the team built and dropped | 0.518 | 0.474 | 0.753 |
+| **Our pipeline (submitted)** | **0.613** | **0.589** | **0.794** |
+
+These are guides, not a forecast of our real score, which we expect to be lower (see section 7).
+The test-bed figures in section 4.4 were measured during development, before the final retraining
+described in section 4.2.
 
 ## 2. Approach, and why this rather than something else
 
@@ -75,7 +81,7 @@ time for.
 |---|---|---|
 | Tactical ATD (`BAR-ATH_tactical_atd.txt` + `.xml`) | **Model input** | Parsed once into arrays in metres (`src/parse.py`), cached in `cache/`. Ball and player positions and speeds, team of each track slot (reusing `starter/baseline.py`'s `team_of_each_track`). |
 | `games.py` constants | Used | Pitch size and the graded frame blocks of each half. Frames outside them are `X`. |
-| Tactical ATD, aggregate shape | Used to calibrate the damage | Lengths of seen and unseen stretches of the ball and of player tracks, and the typical size of ball velocity changes, so the open matches can be damaged realistically (section 4). No labels, no frame numbers. |
+| Tactical ATD, for training | **Not used** | The organisers allow the provided match for validation only. Nothing measured on it is used in training: the damage applied to the open matches is built from figures published in `DATA.md` (section 4.2). |
 | Smart Tagging (`BAR-ATH_tactical_smart_tagging.xml`) | **Check only, not model input** | `src/tags.py` measures how often our team labels agree with the team implied by attacking and defending phase tags. It is automatic data, so this is allowed, and it is our only independent check on the real match: team agreement 0.85 for the final pipeline vs 0.73 for the rule-only version. It was never used to train or tune anything. |
 | Tactical video | Not used as input | |
 | Homography (tactical and broadcast) | Dropped | Not needed: the ATD is already in pitch coordinates. |
@@ -114,17 +120,16 @@ on it as-is would mislead. Each copy is damaged with a fixed seed:
 
 | Real ATD property | What we do to the open data |
 |---|---|
-| Ball missing on about 41% of graded frames | Remove the ball by drawing seen/unseen stretch lengths from the provided match's profile (about 59% visible after damage) |
+| Ball missing on about 41% of graded frames (DATA.md) | Remove the ball by drawing seen/unseen stretch lengths from log-normal distributions whose means give about 59% visible after damage, as DATA.md reports |
 | Ball lost more often at stoppages | Long gaps made rare in play; dead time uses the full gap distribution with seen stretches capped; the edges of the dead-time zone are jittered by up to 3 s so the model cannot learn the exact boundary from the damage |
 | About 20.5 of 22 players tracked | Remove player stretches to about 20.4 tracked |
-| Smooth ball path | Smooth the ball (15-frame mean) so its velocity changes are about as large as in the real ATD |
+| Smooth ball path | Smooth the ball lightly (5-frame mean, a judgement value) |
 | Noise | 0.05 m ball noise, 0.3 m player position noise, 0.3 m/s player speed noise |
-| A team shows more than 11 tracks on about 13% of frames, mostly one player tracked under the other team's slot for a few seconds; more than 22 tracks on about 2% | Three spare slots per team that now and then carry a player of the other team (blanking that player's own slot) or copy a teammate 1 to 3 m away, at about the same rates |
+| The tracker occasionally duplicates someone, so more than 22 objects are tracked (DATA.md) | Three spare slots per team that now and then copy a teammate 1 to 3 m away, at a judgement rate |
 
-What is taken from the provided match: only the lengths of seen and unseen ball and player
-stretches within the graded halves, the size of ball velocity changes, and how often one team shows
-more than 11 or both more than 22 tracks, to make the damage realistic. These are stored in `cache/tracking_profile.npz` (computed on first use, not committed).
-No labels and no frame numbers.
+**Nothing is measured on the provided match.** Every damage setting is either a figure published in
+`DATA.md` or a judgement value, so training needs no competition data at all: the final models were
+retrained on a machine that did not have the competition data.
 
 ### 4.3 Training set and model
 
@@ -295,9 +300,7 @@ or `sha256sum` after each run. `python victor/run.py --name <team_name>` writes 
 
 Notes:
 
-- The tracking profile `cache/tracking_profile.npz` (stretch lengths used by the damage step) is
-  computed from the provided match the first time it is needed, so the match data must be in
-  `data/` before training.
+- Training needs only the open matches; the competition data is not read.
 - Converted open matches are cached in `cache/external/` on first use.
 - Seeds are fixed everywhere (damage seeds, LightGBM `seed=0`, `deterministic=True`, row-wise
   histograms, 8 threads). Retraining on the same machine gives a byte-identical

@@ -1,19 +1,24 @@
 """Make clean tracking look like the provided automatic tracking.
 
 The open matches come from a much cleaner system, so a score on them as they are says little. This
-removes the ball and the players the way the real ATD loses them, using the lengths of the seen and
-unseen stretches measured on the provided match, softens the ball path as much as the real
-one, then adds a little position noise.
+removes the ball and the players the way automatic tracking loses them, softens the ball path,
+then adds a little position noise.
 
-Only those lengths and the size of its velocity changes are taken from the provided match: no
-labels and no frame numbers. The lengths stay in cache/, because they are derived from the match
-data.
+NOTHING HERE IS MEASURED ON THE PROVIDED MATCH. The organisers allow the provided match for
+validation only, so the damage is built from figures published in DATA.md and from judgement:
 
-MAX_ALIVE_GAP and MAX_DEAD_SEEN were set so the four baselines land near their published full-match
-scores with the ball visible about as often as DATA.md says, so no ground truth was involved.
+  * ball visible on 59.3% of graded frames (DATA.md) -- seen and unseen stretch lengths are drawn
+    from log-normal distributions whose means give that share
+  * 20.5 of 22 players tracked on average (DATA.md) -- PLAYER_COVERAGE
+  * the tracker occasionally duplicates someone (DATA.md) -- spare slots that now and then copy a
+    player a little apart
+  * ball smoothing, noise levels and stretch-length shapes are judgement values
+
+MAX_ALIVE_GAP and MAX_DEAD_SEEN were set so the baselines land near their published full-match
+scores (README.md), so no ground truth was involved.
 
 What this does not copy: in play the real ball goes missing more often in crowds and in the air,
-whereas here gaps fall at random, and tracks here never swap team.
+whereas here gaps fall at random.
 """
 
 import os
@@ -28,22 +33,27 @@ sys.path.insert(0, os.path.dirname(ROOT))   # the shared repository, for games.p
 from games import GAME, half_video_blocks  # noqa: E402
 
 # Params
-PROFILE_PATH = os.path.join(ROOT, "cache", "tracking_profile.npz")
-BALL_NOISE_M = 0.05             # the real ball path is smooth, not noisy
-BALL_SMOOTH_FRAMES = 15         # matches the size of velocity changes in the real ATD
+BALL_NOISE_M = 0.05             # judgement: a tracked ball path is smooth, not noisy
+BALL_SMOOTH_FRAMES = 5          # judgement: light smoothing, as automatic trackers apply
 PLAYER_NOISE_M = 0.3
 PLAYER_COVERAGE = 20.5 / 22     # DATA.md: 20.5 tracked objects on average, of 22 players
 MAX_ALIVE_GAP = 200             # longest ball gap in play, frames
 MAX_DEAD_SEEN = 250             # longest visible ball stretch in dead time, frames
-LONG_GAP_SHARE = 0.1            # longer gaps in play, relative to the short ones
+LONG_GAP_SHARE = 0.02           # judgement: longer gaps in play, relative to the short ones
 BOUNDARY_JITTER = 75            # dead-time damage starts and ends up to 3 s off the true edge
 PLAYER_SPEED_NOISE = 0.3        # m/s
-EXTRA_SLOTS = 3                 # spare slots per team for tracks that follow the wrong person
-WRONG_TEAM_GAP_MEAN = 4500      # frames a spare slot rests between wrong-team stretches
-DUPLICATE_GAP_MEAN = 6000       # frames a spare slot rests between duplicate stretches
-FLAW_MEDIAN_FRAMES = 100        # real stretches with a team over 11: median 72-85, mean 137-166
+EXTRA_SLOTS = 3                 # spare slots per team for duplicated tracks
+DUPLICATE_GAP_MEAN = 10000      # judgement: frames a spare slot rests between duplicates
+FLAW_MEDIAN_FRAMES = 100        # judgement: a duplicate lasts a few seconds
 FLAW_SIGMA = 1.0                # log-normal spread of those lengths
 FLAW_FRAMES = (10, 1500)
+# Published-figure profile: log-normal stretch lengths, in frames. Median seen chosen so the
+# ball ends up visible ~59% of the time after ball_mask, as DATA.md reports for graded frames.
+BALL_SEEN_MEDIAN, BALL_SEEN_SIGMA = 43, 1.0
+BALL_GAP_MEDIAN, BALL_GAP_SIGMA = 25, 1.2
+PLAYER_SEEN_MEDIAN, PLAYER_SEEN_SIGMA = 300, 1.0
+PROFILE_SAMPLES = 20000
+PROFILE_SEED = 2027
 DUPLICATE_OFFSET_M = (1.0, 3.0)
 
 
@@ -56,33 +66,19 @@ def run_lengths(seen):
     return (lengths[0 if first_is_seen else 1::2], lengths[1 if first_is_seen else 0::2])
 
 
-def measure_profile(data, blocks=None):
-    """Seen and unseen stretch lengths of the ball and of tracked players, over the two halves."""
-    blocks = half_video_blocks(GAME) if blocks is None else blocks
-    ball_seen, ball_gap, player_seen, player_gap = [], [], [], []
-    for _, first, last in blocks:
-        window = data["ball_xy"][first:last + 1, 0]
-        seen, gap = run_lengths(~np.isnan(window))
-        ball_seen.append(seen)
-        ball_gap.append(gap)
-        for slot in range(data["player_xy"].shape[1]):
-            track = ~np.isnan(data["player_xy"][first:last + 1, slot, 0])
-            if track.any():
-                seen, gap = run_lengths(track)
-                player_seen.append(seen)
-                player_gap.append(gap)
-    return {"ball_seen": np.concatenate(ball_seen), "ball_gap": np.concatenate(ball_gap),
-            "player_seen": np.concatenate(player_seen), "player_gap": np.concatenate(player_gap)}
-
-
 def load_profile():
-    """The measured stretch lengths, measured from the cached tracking the first time."""
-    if not os.path.isfile(PROFILE_PATH):
-        import parse
-        profile = measure_profile(parse.load())
-        np.savez(PROFILE_PATH, **profile)
-    with np.load(PROFILE_PATH) as cached:
-        return {name: cached[name] for name in cached.files}
+    """Seen and unseen stretch lengths built from the DATA.md figures. Deterministic.
+
+    Same keys as before (ball_seen, ball_gap, player_seen), so the rest of the damage is unchanged.
+    """
+    rng = np.random.default_rng(PROFILE_SEED)
+
+    def lengths(median, sigma):
+        return np.maximum(1, np.exp(rng.normal(np.log(median), sigma, PROFILE_SAMPLES))).astype(
+            np.int64)
+    return {"ball_seen": lengths(BALL_SEEN_MEDIAN, BALL_SEEN_SIGMA),
+            "ball_gap": lengths(BALL_GAP_MEDIAN, BALL_GAP_SIGMA),
+            "player_seen": lengths(PLAYER_SEEN_MEDIAN, PLAYER_SEEN_SIGMA)}
 
 
 def visible_mask(n_frames, seen_lengths, gap_lengths, rng):
@@ -166,13 +162,10 @@ def flaw_lengths(n, rng):
 
 
 def add_track_flaws(player_xy, player_speed, team_of_slot, rng):
-    """Spare slots per team that now and then follow the wrong person.
+    """Spare slots per team that now and then duplicate one of the team's players a little apart.
 
-    Measured on the provided match, a team shows more than 11 tracks on 13% of graded frames and
-    in 84% of those the other team shows 10 or fewer: mostly one player tracked under a slot of
-    the other team, for a few seconds. So most stretches move a player into a spare slot of the
-    other team and blank their own slot meanwhile. A few copy a player into a spare slot of their
-    own team, a little apart, as the duplicates behind the 2% of frames with more than 22 tracks.
+    DATA.md: the number of tracked objects "occasionally exceeds 22 when the tracker duplicates
+    someone". The rate is a judgement value, not measured on the provided match.
     """
     n_frames = len(player_xy)
     teams = [np.flatnonzero(team_of_slot == side) for side in (0, 1)]
@@ -183,7 +176,7 @@ def add_track_flaws(player_xy, player_speed, team_of_slot, rng):
         for _ in range(EXTRA_SLOTS):
             xy = np.full((n_frames, 1, 2), np.nan)
             speed = np.full((n_frames, 1), np.nan, dtype=player_speed.dtype)
-            for wrong_team, gap_mean in ((True, WRONG_TEAM_GAP_MEAN), (False, DUPLICATE_GAP_MEAN)):
+            for wrong_team, gap_mean in ((False, DUPLICATE_GAP_MEAN),):
                 position = int(rng.exponential(gap_mean))
                 while position < n_frames:
                     length = int(flaw_lengths(1, rng)[0])

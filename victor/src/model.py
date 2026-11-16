@@ -1,7 +1,7 @@
 """Learn per-frame H / A / D scores from the labelled open matches.
 
-Trained on damaged copies only, so the model sees what the real tracking looks like. Nothing from
-the provided match is used except the gap lengths in cache/tracking_profile.npz.
+Trained on damaged copies only, so the model sees what the real tracking looks like. Nothing
+from the provided match is used: the damage is built from DATA.md figures.
 """
 
 import os
