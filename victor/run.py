@@ -1,6 +1,6 @@
 """Data in, submission out. This one command regenerates the file.
 
-    python victor/run.py                # writes evaluation/results/victor.csv
+    python victor/run.py                # writes evaluation/results/Tiki-Data.csv
     python victor/run.py --name my_test
 """
 
@@ -30,7 +30,7 @@ SMOOTH_WINDOW = 50      # +/- 2 s majority vote, the published floor's window
 CHANGE_COST = 10        # what the best path pays for each H, A or D change, chosen on the test bed
 MIN_POSSESSION = 35     # frames, 1.4 s. Longer minimums won only on our relabelled test answers
 MIN_DEAD = 1            # no minimum stoppage
-DEFAULT_NAME = "victor"
+DEFAULT_NAME = "Tiki-Data"   # the registered team name; the scoreboard row is named after the file
 
 
 def predict(data, blocks, booster, booster2=None, cost=CHANGE_COST):

@@ -1,5 +1,16 @@
 # More than a Hack 2027 — Phase 1: Ball Possession
 
+> **Team Tiki-Data's submission is the pipeline in [`victor/`](victor/).** With the match data
+> unpacked into `data/` as in [DATA.md](DATA.md), from this folder:
+>
+> ```bash
+> pip install -r victor/requirements-run.txt    # Python 3.11, any OS
+> python victor/run.py                          # -> evaluation/results/Tiki-Data.csv
+> ```
+>
+> How it works and how it was tested: **[victor/TECHNICAL.md](victor/TECHNICAL.md)**. Other folders
+> hold teammates' explorations; everything below is the organisers' original README.
+
 **Organised by [Metrica Sports](https://metrica-sports.com), [FC Barcelona](https://www.fcbarcelona.com)
 and the [Mobile World Capital Barcelona](https://www.mwcbarcelona.com)**, at the Talent Arena in Barcelona.
 

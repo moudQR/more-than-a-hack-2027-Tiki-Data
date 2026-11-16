@@ -2,8 +2,8 @@
 
 More Than a Hack 2027, Phase 1: frame-by-frame possession for FC Barcelona vs Athletic Club.
 
-> Upload this file as `<team_name>.md` (or export it as `<team_name>.pdf`), named after the
-> registered team, together with `<team_name>.csv`.
+> Uploaded as `Tiki-Data.md` together with `Tiki-Data.csv`, named after the registered team.
+> Code: the `victor/` folder of the team repository.
 
 > **Where things are.** This is Victor's folder in the team repository. Paths to the shared files
 > (`data/`, `starter/`, `evaluation/`, `games.py`) are from the repository root; every other path
@@ -124,7 +124,19 @@ on it as-is would mislead. Each copy is damaged with a fixed seed:
 What is taken from the provided match: only the lengths of seen and unseen ball and player
 stretches within the graded halves, the size of ball velocity changes, and how often one team shows
 more than 11 or both more than 22 tracks, to make the damage realistic. These are stored in `cache/tracking_profile.npz` (computed on first use, not committed).
-No labels and no frame numbers.
+No labels and no frame numbers. RULES.md allows this explicitly: on the provided game, "learning
+without human labels" and "inspecting the data … to design features" remain fine; what is ruled
+out is hand labels, the ground truth and constants tied to specific frames.
+
+We also tried the alternative, a damage built only from the figures in DATA.md and judgement
+values, with both models retrained on it. It matches the real ball visibility (59%) but not the
+real data's behaviour: the published baselines score 0.39–0.44 macroF1 under it against
+0.64–0.68 on the real match (0.52–0.61 under the measured damage), and ±2 s spellF1 0.211 against
+0.243 published (0.243 under the measured damage). On 23 matches neither model was trained on
+(Metrica 1–3 and 20 SkillCorner matches), the models trained on the measured damage scored as
+well or better: spellF1 0.692 against 0.643 on Metrica and 0.496 against 0.483 on SkillCorner
+under the realistic damage, and level within 0.005 on SkillCorner otherwise. So the measured
+damage was kept.
 
 ### 4.3 Training set and model
 
@@ -175,7 +187,7 @@ data/tactical/*_atd.txt + .xml
   -> src/stage2.py     corrected probabilities from models/stage2.txt
   -> src/states.py     late-kickoff wait set to D; Viterbi per half, change cost 10,
                        possessions at least 1.4 s; X outside the halves
-  -> evaluation/results/victor.csv   (repository root)
+  -> evaluation/results/Tiki-Data.csv   (repository root)
 ```
 
 The 133 clues, in groups:
@@ -263,13 +275,13 @@ Python 3.11. All commands from the repository root. Nothing needs a GPU.
 
    ```bash
    python victor/run.py
-   python evaluation/validate_submission.py evaluation/results/victor.csv
+   python evaluation/validate_submission.py evaluation/results/Tiki-Data.csv
    ```
 
 `run.py` parses the ATD into `cache/` on first use (`--rebuild-cache` forces it again), applies
-`models/possession.txt` and `models/stage2.txt` and writes `evaluation/results/victor.csv`. Running it twice gives
-byte-identical files; check with `certutil -hashfile evaluation\results\victor.csv SHA256` (Windows)
-or `sha256sum` after each run. `python victor/run.py --name <team_name>` writes it under the upload name.
+`models/possession.txt` and `models/stage2.txt` and writes `evaluation/results/Tiki-Data.csv`. Running it twice gives
+byte-identical files; check with `certutil -hashfile evaluation\results\Tiki-Data.csv SHA256` (Windows)
+or `sha256sum` after each run. The default name is already the upload name, `Tiki-Data.csv`.
 
 ### 8.2 Retrain from scratch
 
@@ -290,7 +302,7 @@ or `sha256sum` after each run. `python victor/run.py --name <team_name>` writes 
    python victor/score_external.py              # test-bed table: baselines, rules and current pipeline
    python victor/train_model.py                 # final first stage on all 7 -> models/possession.txt
    python victor/train_model.py --stage2        # final second stage -> models/stage2.txt
-   python victor/run.py                         # submission -> evaluation/results/victor.csv
+   python victor/run.py                         # submission -> evaluation/results/Tiki-Data.csv
    ```
 
 Notes:
