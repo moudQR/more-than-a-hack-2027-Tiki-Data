@@ -1,0 +1,4 @@
+# cache/ holds arrays built from the match tracking and external/ holds other matches' data.
+# Neither may reach this public repository.
+cache/
+external/

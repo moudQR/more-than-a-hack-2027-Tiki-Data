@@ -1,0 +1,3 @@
+# LightGBM model files record each tree's size in bytes, so any line-ending conversion breaks them.
+# Store and check them out byte for byte.
+models/*.txt -text
